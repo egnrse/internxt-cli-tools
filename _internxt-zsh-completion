@@ -1,0 +1,58 @@
+#compdef internxt
+
+local -a internxt_commands
+internxt_commands=(
+  add-cert config create-folder delete-permanently-file delete-permanently-folder
+  download-file list login logout logs move-file move-folder rename-file
+  rename-folder trash-clear trash-file trash-folder trash-list
+  trash-restore-file trash-restore-folder upload-file webdav-config whoami
+)
+
+# top‑level completions
+_arguments -C \
+  '1: :->cmds' \
+  '*::arg:->args'
+
+case $state in
+  cmds)
+    _describe 'internxt command' internxt_commands
+    ;;
+  args)
+    case $words[2] in
+      add-cert|config|whoami|logout|logs)
+        ;;  # no further args
+      create-folder)
+        _arguments '--id=[parent folder id]' '--name=[new folder name]'
+        ;;
+      delete-permanently-file|delete-permanently-folder)
+        _arguments '-i:ID of item'
+        ;;
+      download-file)
+        _arguments '-i:ID of file' '-d:directory to download to' '-o[overwrite existing]'
+        ;;
+      list)
+        _arguments '-i:folder id' '-e[extended view]' '--json[output json]'
+        ;;
+      login)
+        _arguments '-e:email' '-p:password' '-w:two‑factor code' '-n[non‑interactive]' '--json'
+        ;;
+      move-file|move-folder)
+        _arguments '-i:ID of item' '-d:destination folder id' '-n[non‑interactive]'
+        ;;
+      rename-file|rename-folder)
+        _arguments '-i:ID of item' '-n:new name' '-n[non‑interactive]'
+        ;;
+      trash-file|trash-folder|trash-clear|trash-list|trash-restore-file|trash-restore-folder)
+        _arguments '-i:ID of item' '-n[non‑interactive]'
+        ;;
+      upload-file)
+        _arguments '--file:path to upload' '-i:destination folder id' '--json' '-n[non‑interactive]'
+        ;;
+      webdav-config)
+        _arguments '--http[use http]' '--https[use https]' '--port:[port number]'
+        ;;
+      *)
+        ;;
+    esac
+    ;;
+esac
