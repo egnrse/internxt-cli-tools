@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 #
 # backup a folder to internxt (the target folder must already exist on internxt)
 # (by egnrse)
@@ -6,8 +6,8 @@
 ## ====== CONFIG =======
 # local_dir: the directory to backup
 # target_dir: the directory on internxt to backup to (must exist already)
-#local_dir="$(pwd)/"
-local_dir="${HOME}/test/"
+local_dir="$(pwd)/"
+#local_dir="${HOME}/test/"
 target_dir="/Backup/egnrse.eu/"
 
 
