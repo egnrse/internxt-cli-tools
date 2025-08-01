@@ -2,7 +2,7 @@
 
 
 maybe:
-- rclone backend ([create a new backend](https://github.com/rclone/rclone/blob/master/CONTRIBUTING.md#writing-a-new-backend), written in go) (does already  exist https://github.com/rclone/rclone/pull/8556)
+- rclone backend (there is a PR for it: https://github.com/rclone/rclone/pull/8556)
 - backup folders script
 - upload folders wrapper
 
