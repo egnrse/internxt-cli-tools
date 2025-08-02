@@ -15,5 +15,5 @@ fpath+=("$HOME/.config/zsh/completions/")
 autoload -Uz compinit && compinit   # load completions
 ```
 
-## backup shell script
-unfinished script: [cloudBackup.sh](./cloudBackup.sh)
+## simple backup shell script
+[cloudBackup.sh](./cloudBackup.sh)
