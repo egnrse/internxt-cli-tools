@@ -279,6 +279,7 @@ copyFolder() {
 
 ## ====== PREREQUISITES ======
 ## test for prerequisites
+testAvailable awk jq find basename dirname stat date
 if ! command -v internxt > /dev/null; then
 	echo "The command 'internxt' is missing. Install it from 'https://github.com/internxt/cli'." >&2
 	exit $ERROR
@@ -287,7 +288,6 @@ if ! internxt config > /dev/null 2>&1; then
 	echo "You need to login first. (with 'internxt login')" >&2
 	exit $ERROR
 fi
-testAvailable awk jq find basename dirname
 
 
 ## ====== PROGRAM ======
@@ -302,11 +302,13 @@ for arg in "$@"; do
 done
 # test for invalid inputs
 if [ -z "$1" ] || [ -z "$2" ]; then
+	echo "Error: 'source' and 'target' are required arguments" >&2
+	echo ""
 	usage $1 $2
 	exit $ERROR_INPUT
 fi
 if [ -n "$3" ]; then
-	echo "Received unexpexted input '$3'"
+	echo "Error: received unexpexted input '$3'" >&2
 	echo ""
 	usage $1 $2
 	exit $ERROR_INPUT
@@ -316,7 +318,9 @@ fi
 ret_str=$(findFolderID ${target_dir})
 ret_val=$?
 if [ ${ret_val} -ne 0 ]; then
-	echo "Error: ${ret_str}" >&2
+	if [ -n "${ret_str}" ]; then
+		echo "Error: ${ret_str}" >&2
+	fi
 	exit ${ret_val}
 fi
 target_id=${ret_str}
