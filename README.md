@@ -17,4 +17,4 @@ autoload -Uz compinit && compinit   # load completions
 (might be included [upstream](https://github.com/internxt/cli/pull/330) at some point)
 
 ## simple backup shell script
-[cloudBackup.sh](./cloudBackup.sh)
+[cloudBackup.sh](./cloudBackup.sh): does support `-h|--help`

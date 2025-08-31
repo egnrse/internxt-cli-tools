@@ -1,39 +1,69 @@
 #!/bin/bash
 #
 # backup a folder to internxt (the target folder must already exist on internxt)
+# use -h/--help to see usage options
 # (by egnrse)
 
-## ====== CONFIG =======
+## ====== CONFIG ======
 # local_dir: the directory to backup
-# target_dir: the directory on internxt to backup to (must exist already)
-local_dir="$(pwd)/"
-target_dir="/Backup/"
+# target_dir: the destination directory on internxt (must exist already)
+local_dir="$1"
+target_dir="$2"
 
-
-## ====== SETTINGS ======
 ## exit status
 SUCCESS=0
 ERROR=1				# general
 ERROR_TARGET_DIR=2	# target dir is invalid or not found
 ERROR_CREATE=3		# cant create a file or folder
+ERROR_INPUT=5		# bad input args
 
 ## ====== CONSTANTS ======
-## internxt (error) messages
+## internxt (error) messages (for detecting them)
 msg_folder_exists="Folder with the same name already exists in this location"
 msg_file_exists="File already exists"
 
-## ====== PROGRAM ======
-## test for prerequisites
-if ! command -v internxt > /dev/null; then
-	echo "The command 'internxt' is missing. Install it from 'https://github.com/internxt/cli'."
-	exit $ERROR
-fi
-if ! internxt config > /dev/null 2>&1; then
-	echo "You need to login first. (with 'internxt login')"
-	exit $ERROR
-fi
-#dev: awk, jq, find, basename, dirname, and more?
 
+## ====== FUNCTIONS ======
+# tests if all given arguments are available as commands
+# exits with $ERROR if one is missing
+testAvailable() {
+	for arg in "$@"; do
+		if ! command -v "$arg" >/dev/null 2>&1; then
+			echo "'$arg' not installed, but needed." >&2
+			exit $ERROR
+		fi
+	done
+}
+
+# prints usage
+# expects $1/$2 as arguments (to lookup if they are valid)
+usage() {
+	echo "usage: $0 source target [options]"
+	echo " source: what file/folder to copy"
+	echo " target: the destination directory in internxt (must already exist)"
+	echo ""
+	echo "Options:"
+	echo "	-h, --help    show this help message"
+	echo ""
+	if [ -z "$2" ] || [ "$2" == "--help" ] || [ "$2" == "-h" ]; then
+		echo "(not testing source/target, 'source' or 'target' not provided)"
+	else
+		echo "Would currently backup '$local_dir' to '$target_dir'"
+		if [ -r "$local_dir" ]; then
+			echo " source is valid"
+		else
+			echo " source not found"
+		fi
+		echo -ne " testing if target is valid..."
+		ret_str=$(findFolderID $target_dir 2>&1)
+		ret_val=$?
+		if [ "$ret_val" -eq 0 ]; then
+			echo -e "\r target is valid                  "
+		else
+			echo -e "\r ${ret_str}           "
+		fi
+	fi
+}
 
 # finds the folder ID of the given path $1 starting from $2 (on internxt)
 # $1: the target directory, must start with a '/' (eg. '/Backup/PC/')
@@ -246,6 +276,41 @@ copyFolder() {
 	done
 }
 
+
+## ====== PREREQUISITES ======
+## test for prerequisites
+if ! command -v internxt > /dev/null; then
+	echo "The command 'internxt' is missing. Install it from 'https://github.com/internxt/cli'." >&2
+	exit $ERROR
+fi
+if ! internxt config > /dev/null 2>&1; then
+	echo "You need to login first. (with 'internxt login')" >&2
+	exit $ERROR
+fi
+testAvailable awk jq find basename dirname
+
+
+## ====== PROGRAM ======
+## handle arguments
+for arg in "$@"; do
+	case "$arg" in
+		-h|--help)
+			usage $1 $2
+			exit 0
+			;;
+	esac
+done
+# test for invalid inputs
+if [ -z "$1" ] || [ -z "$2" ]; then
+	usage $1 $2
+	exit $ERROR_INPUT
+fi
+if [ -n "$3" ]; then
+	echo "Received unexpexted input '$3'"
+	echo ""
+	usage $1 $2
+	exit $ERROR_INPUT
+fi
 
 ## find the target directory id
 ret_str=$(findFolderID ${target_dir})
