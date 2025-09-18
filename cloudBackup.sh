@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # backup a folder to internxt (the target folder must already exist on internxt)
 # use -h/--help to see usage options
@@ -237,7 +237,7 @@ copyFolder() {
 			## FILE
 
 			# upload file
-			local json_ret=$(internxt upload-file --file=${path} --destination=${id_array[-1]} --json --non-interactive)
+			local json_ret=$(internxt upload-file --file="${path}" --destination="${id_array[-1]}" --json --non-interactive)
 			if [ $? -ne 0 ] || ! jq -e '.success' <<<${json_ret} >/dev/null; then
 				if [ "$(jq -r '.message'<<<${json_ret})" == "$msg_file_exists" ]; then
 					# file already exists
@@ -254,7 +254,7 @@ copyFolder() {
 						#echo "  local: $local_mtime, remote: $remote_mtime"
 						local json_ret=$(internxt trash-file --id=$uuid --json --non-interactive)
 						exitInternxt $? "$json_ret"
-						local json_ret=$(internxt upload-file --file=${path} --destination=${id_array[-1]} --json --non-interactive)
+						local json_ret=$(internxt upload-file --file="${path}" --destination="${id_array[-1]}" --json --non-interactive)
 						exitInternxt $? "$json_ret"
 						echo "  file reuploaded '$path'"
 					elif [[ "$local_mtime" < "$remote_mtime" ]]; then
