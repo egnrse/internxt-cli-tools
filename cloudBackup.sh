@@ -19,6 +19,9 @@ ERROR_INPUT=5		# bad input args
 
 LOG_LEVEL="${LOG_LEVEL:-1}"	# set log level (0: nothing, 1: basic, 2: info, 3: debug)
 
+find_args="-H"		# extra arguments for find
+
+
 ## ====== CONSTANTS ======
 ## internxt (error) messages (for detecting them)
 msg_folder_exists="Folder with the same name already exists in this location"
@@ -42,6 +45,7 @@ log() {
 # tests if all given arguments are available as commands
 # exits with $ERROR if one is missing
 testAvailable() {
+	log 5 "testAvailable()" >&2
 	for arg in "$@"; do
 		if ! command -v "$arg" >/dev/null 2>&1; then
 			echo "'$arg' not installed, but needed." >&2
@@ -53,15 +57,17 @@ testAvailable() {
 # prints usage
 # expects $1/$2 as arguments (to lookup if they are valid)
 usage() {
+	log 5 "usage()" >&2
 	echo "usage: $0 source target [options]"
 	echo " source: what file/folder to copy"
 	echo " target: the destination directory in internxt (must already exist)"
 	echo ""
 	echo "Options:"
 	echo "    -h, --help    show this help message"
+	echo "    -L, --link    follow symbolic links"
 	echo ""
 	echo "Environment:"
-	echo "    LOG_LEVEL     set stdout verbosity (0-5)"
+	echo "    LOG_LEVEL     set stdout verbosity (0-6)"
 	echo ""
 	if [ -z "$2" ] || [ "$2" == "--help" ] || [ "$2" == "-h" ]; then
 		echo "(not testing source/target, 'source' or 'target' not provided)"
@@ -87,6 +93,7 @@ usage() {
 # $1: the target directory, must start with a '/' (eg. '/Backup/PC/')
 # $2: is the ID of a folder (will assume root '/' if empty)
 findFolderID() {
+	log 5 "findFolderID()" >&2
 	local target_dir="$1"
 	local start_dir="$2"
 	local targetID=""	# return value
@@ -151,6 +158,7 @@ findFolderID() {
 # $2: is the ID of a folder (will assume root '/' if empty)
 # returns $SUCCESS on success, the return value of (failed) function calls, else $ERROR
 getFileJson() {
+	log 5 "getFileJson()" >&2
 	local target="$1"
 	local start_dir="$2"
 	local targetJson=""	# return value
@@ -166,7 +174,7 @@ getFileJson() {
 	# list parent folder
 	local json_ret
 	json_ret="$(internxt list --id="${folderID}" --json --non-interactive)"
-	log 5 "getFileJson() json_ret: ${json_ret}" >&2
+	log 6 "getFileJson() json_ret: ${json_ret}" >&2
 	if [ $? -ne 0 ] || ! jq -e '.success' <<<"${json_ret}" >/dev/null; then
 		echo "$(jq -r '.message'<<<"${json_ret}")" >&2
 		return $ERROR
@@ -176,7 +184,13 @@ getFileJson() {
 	local filename="$(basename "$target")"
 	local plainname="${filename%.*}"
 	local extension="${filename##*.}"
-	if [ "$plainname" = "${filename%.}" ]; then
+	if [ -z "$plainname" ]; then
+		# deal with dots at the start, without an extension
+		plainname="$filename"
+		extension=""
+	fi
+	log 5 "getFileJson(): $filename: '$plainname'.'$extension'" >&2
+	if [ "$plainname" = "${filename%.}" ] || [ -z "$extension" ]; then
 		# deal with extension free files
 		targetJson="$(jq -r --arg plainname "${plainname}" --arg ext "${extension}" '.list.files[] | select(.plainName == $plainname and .type == null)'<<<"${json_ret}")"
 		ret_val=$?
@@ -185,7 +199,7 @@ getFileJson() {
 		ret_val=$?
 	fi
 	if [ $ret_val -ne 0 ] || [ -z "$targetJson" ]; then
-		echo "getFileJson(): '\$json_ret' is malformed or \$targetJson is empty" >&2
+		echo "getFileJson(): '\$json_ret' is malformed or empty" >&2
 		return $ERROR
 	fi
 	echo "$targetJson"
@@ -207,6 +221,7 @@ exitInternxt() {
 # $1: local directory (or file) (that should get uploaded)
 # $2: the id of the target root folder
 copyFolder() {
+	log 5 "copyFolder()" >&2
 	local local_dir="$1"
 	local target_id="$2"
 
@@ -215,7 +230,7 @@ copyFolder() {
 	parent_array=("${local_dir}")	# a stack of (local) paths
 	id_array=("${target_id}")		# the IDs to the equivalent remote folders from the parent_array
 	
-	find "${local_dir}" -print | while IFS= read -r path; do
+	find ${find_args} "${local_dir}" -print | while IFS= read -r path; do
 		echo "$path"
 		
 		# detect directory changes (and delete all array entries that are not needed anymore)
@@ -265,7 +280,7 @@ copyFolder() {
 					local json_ret
 					json_ret="$(getFileJson "${fileName}" ${id_array[-1]})"
 					ret_val=$?
-					log 5 "upload file, get json: $json_ret"
+					log 6 "upload file, get json: $json_ret"
 					[ "$ret_val" -ne "$SUCCESS" ] && return $ret_val
 					local uuid=$(jq -r '.uuid'<<<"${json_ret}")
 
@@ -316,23 +331,33 @@ fi
 
 ## ====== PROGRAM ======
 ## handle arguments
+unhandeld_args=()
 for arg in "$@"; do
 	case "$arg" in
+		-L|--link)
+			# travers into symlinks
+			log 5 "arg: -L/--link"
+			find_args+=" -L"
+			;;
 		-h|--help)
+			log 5 "arg: -h/--help"
 			usage $1 $2
 			exit 0
+			;;
+		*)
+			unhandeld_args+=("$arg")
 			;;
 	esac
 done
 # test for invalid inputs
-if [ -z "$1" ] || [ -z "$2" ]; then
+if [[ ${#unhandeld_args[@]} -le 1 ]]; then
 	echo "Error: 'source' and 'target' are required arguments" >&2
 	echo ""
-	usage $1 $2
+	usage
 	exit $ERROR_INPUT
 fi
-if [ -n "$3" ]; then
-	echo "Error: received unexpexted input '$3'" >&2
+if [[ ${#unhandeld_args[@]} -ne 2 ]]; then
+	echo "Error: received unexpexted inputs, args: '${unhandeld_args[@]}'" >&2
 	echo ""
 	usage $1 $2
 	exit $ERROR_INPUT
