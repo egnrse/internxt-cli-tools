@@ -17,6 +17,8 @@ ERROR_TARGET_DIR=2	# target dir is invalid or not found
 ERROR_CREATE=3		# cant create a file or folder
 ERROR_INPUT=5		# bad input args
 
+LOG_LEVEL="${LOG_LEVEL:-1}"	# set log level (0: nothing, 1: basic, 2: info, 3: debug)
+
 ## ====== CONSTANTS ======
 ## internxt (error) messages (for detecting them)
 msg_folder_exists="Folder with the same name already exists in this location"
@@ -24,6 +26,19 @@ msg_file_exists="File already exists"
 
 
 ## ====== FUNCTIONS ======
+# log to stdout (change visiblity with $LOG_LEVEL)
+# $1 is the level of a msg
+log() {
+	[ -z "$1" ] && echo "log(): must have > 0 arguments" >&2 && exit 1
+	local level="${1}"
+	if [ "$LOG_LEVEL" -ge "$level" ]; then
+		shift
+		local message="$@"
+		local logMsg="[LOG $level]"
+		echo -e "$message"
+	fi
+}
+
 # tests if all given arguments are available as commands
 # exits with $ERROR if one is missing
 testAvailable() {
@@ -43,7 +58,10 @@ usage() {
 	echo " target: the destination directory in internxt (must already exist)"
 	echo ""
 	echo "Options:"
-	echo "	-h, --help    show this help message"
+	echo "    -h, --help    show this help message"
+	echo ""
+	echo "Environment:"
+	echo "    LOG_LEVEL     set stdout verbosity (0-5)"
 	echo ""
 	if [ -z "$2" ] || [ "$2" == "--help" ] || [ "$2" == "-h" ]; then
 		echo "(not testing source/target, 'source' or 'target' not provided)"
@@ -55,7 +73,7 @@ usage() {
 			echo " source not found"
 		fi
 		echo -ne " testing if target is valid..."
-		ret_str=$(findFolderID $target_dir 2>&1)
+		ret_str=$(findFolderID "$target_dir" 2>&1)
 		ret_val=$?
 		if [ "$ret_val" -eq 0 ]; then
 			echo -e "\r target is valid                  "
@@ -69,8 +87,8 @@ usage() {
 # $1: the target directory, must start with a '/' (eg. '/Backup/PC/')
 # $2: is the ID of a folder (will assume root '/' if empty)
 findFolderID() {
-	local target_dir=$1
-	local start_dir=$2
+	local target_dir="$1"
+	local start_dir="$2"
 	local targetID=""	# return value
 
 	# sanity checks
@@ -87,14 +105,14 @@ findFolderID() {
 	esac
 
 	# list the start folder
-	local json_ret=$(internxt list --id=${start_dir} --json --non-interactive)
-	if [ $? -ne 0 ] || ! jq -e '.success' <<<${json_ret} >/dev/null; then
-		echo "$(jq -r '.message'<<<${json_ret})" >&2
+	local json_ret=$(internxt list --id="${start_dir}" --json --non-interactive)
+	if [ $? -ne 0 ] || ! jq -e '.success' <<<"${json_ret}" >/dev/null; then
+		echo "$(jq -r '.message'<<<"${json_ret}")" >&2
 		return ${ERROR_TARGET_DIR}
 	fi
 
 	# get the name of the top folder
-	local top_dir=$(awk -F/ '{print $2}'<<<${target_dir})
+	local top_dir="$(awk -F/ '{print $2}'<<<"${target_dir}")"
 
 	if [ -n "${top_dir}" ]; then
 		# find the ID of the top folder
@@ -110,21 +128,21 @@ findFolderID() {
 
 		if [ -n "${rest_dir}" ]; then
 			# continue search in the subfolder
-			targetID=$(findFolderID ${rest_dir} ${subfolderID})
+			targetID=$(findFolderID "${rest_dir}" "${subfolderID}")
 			local returnVal=$?
 			if [ $returnVal -ne $SUCCESS ]; then
-				echo ${targetID} >&2
+				echo "${targetID}" >&2
 				return $returnVal
 			fi
 		else
 			# use the subfolders ID
-			targetID=${subfolderID}
+			targetID="${subfolderID}"
 		fi
 	else
 		# use this folders ID
-		targetID=${start_dir}
+		targetID="${start_dir}"
 	fi
-	echo ${targetID}
+	echo "${targetID}"
 	return $SUCCESS
 }
 
@@ -133,35 +151,35 @@ findFolderID() {
 # $2: is the ID of a folder (will assume root '/' if empty)
 # returns $SUCCESS on success, the return value of (failed) function calls, else $ERROR
 getFileJson() {
-	local target=$1
-	local start_dir=$2
+	local target="$1"
+	local start_dir="$2"
 	local targetJson=""	# return value
 
 	# find parent folder id
-	local folderID=$(findFolderID $(dirname $target) $start_dir)
+	local folderID="$(findFolderID "$(dirname "$target")" "$start_dir")"
 	local ret_val=$?
 	if [ $ret_val -ne $SUCCESS ]; then
-		echo $folderID >&2
+		echo "$folderID" >&2
 		return $ret_val
 	fi
 
 	# list parent folder
-	local json_ret=$(internxt list --id=${folderID} --json --non-interactive)
-	if [ $? -ne 0 ] || ! jq -e '.success' <<<${json_ret} >/dev/null; then
-		echo "$(jq -r '.message'<<<${json_ret})" >&2
+	local json_ret="$(internxt list --id="${folderID}" --json --non-interactive)"
+	if [ $? -ne 0 ] || ! jq -e '.success' <<<"${json_ret}" >/dev/null; then
+		echo "$(jq -r '.message'<<<"${json_ret}")" >&2
 		return $ERROR
 	fi
 
 	# extract the json (from $json_ret)
-	local filename=$(basename $target)
+	local filename="$(basename "$target")"
 	local plainname="${filename%.*}"
 	local extension="${filename##*.}"
 	if [ "$plainname" == "$filename" ]; then
 		# deal with dotless filenames
-		targetJson=$(jq -r --arg plainname "${plainname}" --arg ext "${extension}" '.list.files[] | select(.plainName == $plainname and .type == null)'<<<${json_ret})
+		targetJson="$(jq -r --arg plainname "${plainname}" --arg ext "${extension}" '.list.files[] | select(.plainName == $plainname and .type == null)'<<<"${json_ret}")"
 		ret_val=$?
 	else
-		targetJson=$(jq -r --arg plainname "${plainname}" --arg ext "${extension}" '.list.files[] | select(.plainName == $plainname and .type == $ext)'<<<${json_ret})
+		targetJson="$(jq -r --arg plainname "${plainname}" --arg ext "${extension}" '.list.files[] | select(.plainName == $plainname and .type == $ext)'<<<"${json_ret}")"
 		ret_val=$?
 	fi
 	if [ $ret_val -ne 0 ]; then
@@ -175,10 +193,10 @@ getFileJson() {
 # test if the internxt command worked
 # on fail shows the message of the json
 exitInternxt() {
-	local ret_val=$1
+	local ret_val="$1"
 	local json="$2"
 	if [ "$ret_val" -ne 0 ] || ! jq -e '.success' <<<"${json}" >/dev/null; then
-		echo $(jq -r '.message'<<<"${json}") >&2
+		echo "$(jq -r '.message'<<<"${json}")" >&2
 		return ${ERROR}
 	fi
 }
@@ -187,8 +205,8 @@ exitInternxt() {
 # $1: local directory (or file) (that should get uploaded)
 # $2: the id of the target root folder
 copyFolder() {
-	local local_dir=$1
-	local target_id=$2
+	local local_dir="$1"
+	local target_id="$2"
 
 	# arrays that link local paths to remote folder IDs (they are used to store the current stack of IDs)
 	# eg. [0]: $HOME/backup/ (target root), [1]: $HOME/backup/exampledir/, [2]: $HOME/backup/exampledir/subdir/
@@ -196,16 +214,16 @@ copyFolder() {
 	id_array=("${target_id}")		# the IDs to the equivalent remote folders from the parent_array
 	
 	find "${local_dir}" -print | while IFS= read -r path; do
-		echo $path	#dev
+		echo "$path"
 		
 		# detect directory changes (and delete all array entries that are not needed anymore)
 		while [ "${#parent_array[@]}" -gt 0 ]; do
 			local last="${parent_array[-1]}"
-			if [ "$last" = "$path" ] || [ "$(dirname $last/file)" = "$(dirname $path)" ]; then
+			if [ "$last" = "$path" ] || [ "$(dirname "$last/file")" = "$(dirname "$path")" ]; then
 				#echo "found $last"
 				break
 			else
-				#echo "../"
+				log 3 "../"
 				unset 'parent_array[-1]'
 				unset 'id_array[-1]'
 			fi
@@ -215,21 +233,21 @@ copyFolder() {
 			## DIRECTORY
 
 			# create directory
-			local json_ret=$(internxt create-folder --name=$(basename $path) --id=${id_array[-1]} --json --non-interactive)
-			if [ $? -ne 0 ] || ! jq -e '.success' <<<${json_ret} >/dev/null; then
+			local json_ret="$(internxt create-folder --name="$(basename "$path")" --id=${id_array[-1]} --json --non-interactive)"
+			if [ $? -ne 0 ] || ! jq -e '.success' <<<"${json_ret}" >/dev/null; then
 				if [ "$(jq -r '.message'<<<${json_ret})" == "$msg_folder_exists" ]; then
 					# folder already exists
-					local folderName="/$(basename $path)"
-					local uuid=$(findFolderID ${folderName} ${id_array[-1]})
-					echo "  folder '$path' already exists (ID: '$uuid')"
+					local folderName="/$(basename "$path")"
+					local uuid="$(findFolderID "${folderName}" ${id_array[-1]})"
+					log 1 "  folder '$path' already exists (ID: '$uuid')"
 				else
 					# other error
-					echo "Error: failed to create folder '$path' ($(jq '.message'<<<${json_ret}))" >&2
+					echo "Error: failed to create folder '$path' ($(jq '.message'<<<"${json_ret}"))" >&2
 					return ${ERROR_CREATE}
 				fi
 			else
-				local uuid=$(jq -r '.folder.uuid' <<<${json_ret})
-				echo "  folder created '$path' (ID: '$uuid')"
+				local uuid="$(jq -r '.folder.uuid' <<<"${json_ret}")"
+				log 1 "  folder created '$path' (ID: '$uuid')"
 			fi
 			id_array+=("$uuid")
 			parent_array+=("$path")
@@ -238,31 +256,30 @@ copyFolder() {
 
 			# upload file
 			local json_ret=$(internxt upload-file --file="${path}" --destination="${id_array[-1]}" --json --non-interactive)
-			if [ $? -ne 0 ] || ! jq -e '.success' <<<${json_ret} >/dev/null; then
-				if [ "$(jq -r '.message'<<<${json_ret})" == "$msg_file_exists" ]; then
+			if [ $? -ne 0 ] || ! jq -e '.success' <<<"${json_ret}" >/dev/null; then
+				if [ "$(jq -r '.message'<<<"${json_ret}")" == "$msg_file_exists" ]; then
 					# file already exists
-					local fileName="/$(basename $path)"
-					local json_ret="$(getFileJson ${fileName} ${id_array[-1]})"
+					local fileName="/$(basename "$path")"
+					local json_ret="$(getFileJson "${fileName}" ${id_array[-1]})"
 					ret_val=$?
 					[ "$ret_val" -ne "$SUCCESS" ] && return $ret_val
-					local uuid=$(jq -r '.uuid'<<<${json_ret})
+					local uuid=$(jq -r '.uuid'<<<"${json_ret}")
 
-					local remote_mtime=$(jq -r '.modificationTime'<<<${json_ret})
-					local local_mtime=$(date -u -d "$(stat -c %y "$path")" +%Y-%m-%dT%H:%M:%SZ)
+					local remote_mtime="$(jq -r '.modificationTime'<<<"${json_ret}")"
+					local local_mtime="$(date -u -d "$(stat -c %y "$path")" +%Y-%m-%dT%H:%M:%SZ)"
 					if [[ "$local_mtime" > "$remote_mtime" ]]; then
-						echo "  file: local is newer (ID: '$uuid')"
-						#echo "  local: $local_mtime, remote: $remote_mtime"
-						local json_ret=$(internxt trash-file --id=$uuid --json --non-interactive)
+						log 1 "  reuploading file: local is newer (ID: '$uuid')"
+						log 2 "  local: $local_mtime, remote: $remote_mtime"
+						local json_ret="$(internxt trash-file --id="$uuid" --json --non-interactive)"
 						exitInternxt $? "$json_ret"
-						local json_ret=$(internxt upload-file --file="${path}" --destination="${id_array[-1]}" --json --non-interactive)
+						local json_ret="$(internxt upload-file --file="${path}" --destination="${id_array[-1]}" --json --non-interactive)"
 						exitInternxt $? "$json_ret"
-						echo "  file reuploaded '$path'"
 					elif [[ "$local_mtime" < "$remote_mtime" ]]; then
-						echo "  file: local is older (ID: '$uuid')"
-						#echo "  local: $local_mtime, remote: $remote_mtime"
+						log 1 "  file: local is older (ID: '$uuid')"
+						log 2 "  local: $local_mtime, remote: $remote_mtime"
 					else
-						echo "  file: already exists (ID: '$uuid')"
-						#echo "  local: $local_mtime, remote: $remote_mtime"
+						log 1 "  file: already exists (ID: '$uuid')"
+						log 2 "  local: $local_mtime, remote: $remote_mtime"
 					fi
 				else
 					# other error
@@ -270,7 +287,7 @@ copyFolder() {
 					return ${ERROR_CREATE}
 				fi
 			else
-				echo "  file uploaded '$path'"
+				log 1 "  file uploaded '$path'"
 			fi
 		fi
 	done
@@ -315,7 +332,7 @@ if [ -n "$3" ]; then
 fi
 
 ## find the target directory id
-ret_str=$(findFolderID ${target_dir})
+ret_str=$(findFolderID "${target_dir}")
 ret_val=$?
 if [ ${ret_val} -ne 0 ]; then
 	if [ -n "${ret_str}" ]; then
@@ -323,7 +340,7 @@ if [ ${ret_val} -ne 0 ]; then
 	fi
 	exit ${ret_val}
 fi
-target_id=${ret_str}
+target_id="${ret_str}"
 
 
 ## copy files/folders
