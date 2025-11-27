@@ -164,7 +164,9 @@ getFileJson() {
 	fi
 
 	# list parent folder
-	local json_ret="$(internxt list --id="${folderID}" --json --non-interactive)"
+	local json_ret
+	json_ret="$(internxt list --id="${folderID}" --json --non-interactive)"
+	log 5 "getFileJson() json_ret: ${json_ret}" >&2
 	if [ $? -ne 0 ] || ! jq -e '.success' <<<"${json_ret}" >/dev/null; then
 		echo "$(jq -r '.message'<<<"${json_ret}")" >&2
 		return $ERROR
@@ -174,16 +176,17 @@ getFileJson() {
 	local filename="$(basename "$target")"
 	local plainname="${filename%.*}"
 	local extension="${filename##*.}"
-	if [ "$plainname" == "$filename" ]; then
-		# deal with dotless filenames
+	if [ "$plainname" = "${filename%.}" ]; then
+		# deal with extension free files
 		targetJson="$(jq -r --arg plainname "${plainname}" --arg ext "${extension}" '.list.files[] | select(.plainName == $plainname and .type == null)'<<<"${json_ret}")"
 		ret_val=$?
+		echo "test" >&2
 	else
 		targetJson="$(jq -r --arg plainname "${plainname}" --arg ext "${extension}" '.list.files[] | select(.plainName == $plainname and .type == $ext)'<<<"${json_ret}")"
 		ret_val=$?
 	fi
-	if [ $ret_val -ne 0 ]; then
-		echo "getFileJson(): '\$json_ret' is malformed" >&2
+	if [ $ret_val -ne 0 ] || [ -z "$targetJson" ]; then
+		echo "getFileJson(): '\$json_ret' is malformed or \$targetJson is empty" >&2
 		return $ERROR
 	fi
 	echo "$targetJson"
@@ -260,14 +263,18 @@ copyFolder() {
 				if [ "$(jq -r '.message'<<<"${json_ret}")" == "$msg_file_exists" ]; then
 					# file already exists
 					local fileName="/$(basename "$path")"
-					local json_ret="$(getFileJson "${fileName}" ${id_array[-1]})"
+					local json_ret
+					json_ret="$(getFileJson "${fileName}" ${id_array[-1]})"
 					ret_val=$?
+					log 5 "$json_ret"
 					[ "$ret_val" -ne "$SUCCESS" ] && return $ret_val
 					local uuid=$(jq -r '.uuid'<<<"${json_ret}")
 
 					local remote_mtime="$(jq -r '.modificationTime'<<<"${json_ret}")"
 					local local_mtime="$(date -u -d "$(stat -c %y "$path")" +%Y-%m-%dT%H:%M:%SZ)"
-					if [[ "$local_mtime" > "$remote_mtime" ]]; then
+					if [ -z "$remote_mtime" ]; then
+						log 1 "  Error: skipping file, failed to get remote time"
+					elif [[ "$local_mtime" > "$remote_mtime" ]]; then
 						log 1 "  reuploading file: local is newer (ID: '$uuid')"
 						log 2 "  local: $local_mtime, remote: $remote_mtime"
 						local json_ret="$(internxt trash-file --id="$uuid" --json --non-interactive)"
@@ -275,7 +282,7 @@ copyFolder() {
 						local json_ret="$(internxt upload-file --file="${path}" --destination="${id_array[-1]}" --json --non-interactive)"
 						exitInternxt $? "$json_ret"
 					elif [[ "$local_mtime" < "$remote_mtime" ]]; then
-						log 1 "  file: local is older (ID: '$uuid')"
+						log 1 "  skipping file: local is older (ID: '$uuid')"
 						log 2 "  local: $local_mtime, remote: $remote_mtime"
 					else
 						log 1 "  file: already exists (ID: '$uuid')"
@@ -283,7 +290,7 @@ copyFolder() {
 					fi
 				else
 					# other error
-					echo "Error: failed to upload file '$path' ($(jq '.message'<<<${json_ret}))" >&2
+					echo "Error: failed to upload file '$path' ($(jq '.message'<<<"${json_ret}"))" >&2
 					return ${ERROR_CREATE}
 				fi
 			else
