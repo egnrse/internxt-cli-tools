@@ -180,7 +180,6 @@ getFileJson() {
 		# deal with extension free files
 		targetJson="$(jq -r --arg plainname "${plainname}" --arg ext "${extension}" '.list.files[] | select(.plainName == $plainname and .type == null)'<<<"${json_ret}")"
 		ret_val=$?
-		echo "test" >&2
 	else
 		targetJson="$(jq -r --arg plainname "${plainname}" --arg ext "${extension}" '.list.files[] | select(.plainName == $plainname and .type == $ext)'<<<"${json_ret}")"
 		ret_val=$?
@@ -223,10 +222,10 @@ copyFolder() {
 		while [ "${#parent_array[@]}" -gt 0 ]; do
 			local last="${parent_array[-1]}"
 			if [ "$last" = "$path" ] || [ "$(dirname "$last/file")" = "$(dirname "$path")" ]; then
-				#echo "found $last"
+				log 5 "dir changes: found $last"
 				break
 			else
-				log 3 "../"
+				log 3 "dir changes: ../"
 				unset 'parent_array[-1]'
 				unset 'id_array[-1]'
 			fi
@@ -266,11 +265,12 @@ copyFolder() {
 					local json_ret
 					json_ret="$(getFileJson "${fileName}" ${id_array[-1]})"
 					ret_val=$?
-					log 5 "$json_ret"
+					log 5 "upload file, get json: $json_ret"
 					[ "$ret_val" -ne "$SUCCESS" ] && return $ret_val
 					local uuid=$(jq -r '.uuid'<<<"${json_ret}")
 
 					local remote_mtime="$(jq -r '.modificationTime'<<<"${json_ret}")"
+					remote_mtime="$(date -u -d "$remote_mtime" +%Y-%m-%dT%H:%M:%SZ)" # remove fractional seconds
 					local local_mtime="$(date -u -d "$(stat -c %y "$path")" +%Y-%m-%dT%H:%M:%SZ)"
 					if [ -z "$remote_mtime" ]; then
 						log 1 "  Error: skipping file, failed to get remote time"
